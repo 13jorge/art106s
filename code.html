@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+  <head>
+    <meta charset="utf-8">
+    <title>Art 106</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="style.css">
+  </head>
+  <body>
+    <pre style="word-wrap: break-word;white-space: pre-wrap;">
+
+      #include "Adafruit_NeoTrellis.h"
+      #include "pitches.h"
+
+      #include <SPI.h>
+      #include <Wire.h>
+      #include <Adafruit_GFX.h>
+      #include <Adafruit_SSD1306.h>
+
+      #define SCREEN_WIDTH 128 // OLED display width, in pixels
+      #define SCREEN_HEIGHT 64 // OLED display height, in pixels
+
+      // Declaration for an SSD1306 display connected to I2C (SDA, SCL pins)
+      #define OLED_RESET     4 // Reset pin # (or -1 if sharing Arduino reset pin)
+      Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+
+      Adafruit_NeoTrellis trellis;
+
+      //define a callback for key presses
+      TrellisCallback blink(keyEvent evt){
+        // Check is the pad pressed?
+        if (evt.bit.EDGE == SEESAW_KEYPAD_EDGE_RISING) {
+          trellis.pixels.setPixelColor(evt.bit.NUM, Wheel(map(evt.bit.NUM, 0, trellis.pixels.numPixels(), 0, 255))); //on rising
+        } else if (evt.bit.EDGE == SEESAW_KEYPAD_EDGE_FALLING) {
+        // or is the pad released?
+          trellis.pixels.setPixelColor(evt.bit.NUM, 0); //off falling
+        }
+
+        // Turn on/off the neopixels!
+        trellis.pixels.show();
+
+        return 0;
+      }
+
+
+
+      int VRx = A0;
+      int VRy = A1;
+      int SW = 2;
+
+      int xPosition = 0;
+      int yPosition = 0;
+      int SW_state = 0;
+      int mapX = 0;
+      int mapY = 0;
+
+      // notes in the melody:
+      int melody[] = {
+        NOTE_C4, NOTE_G3, NOTE_G3, NOTE_A3, NOTE_G3, 0, NOTE_B3, NOTE_C4
+      };
+
+      // note durations: 4 = quarter note, 8 = eighth note, etc.:
+      int noteDurations[] = {
+        4, 8, 8, 4, 4, 4, 4, 4
+      };
+
+      void setup() {
+        Serial.begin(9600);
+        //while(!Serial);
+
+            // SSD1306_SWITCHCAPVCC = generate display voltage from 3.3V internally
+        if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3D)) { // Address 0x3D for 128x64
+          Serial.println(F("SSD1306 allocation failed"));
+          for(;;); // Don't proceed, loop forever
+        }
+
+        if (!trellis.begin()) {
+          Serial.println("Could not start trellis, check wiring?");
+          while(1);
+        } else {
+          Serial.println("NeoPixel Trellis started");
+        }
+
+        //activate all keys and set callbacks
+        for(int i=0; i<NEO_TRELLIS_NUM_KEYS; i++){
+          trellis.activateKey(i, SEESAW_KEYPAD_EDGE_RISING);
+          trellis.activateKey(i, SEESAW_KEYPAD_EDGE_FALLING);
+          trellis.registerCallback(i, blink);
+        }
+
+        //do a little animation to show we're on
+        for (uint16_t i=0; i<trellis.pixels.numPixels(); i++) {
+          trellis.pixels.setPixelColor(i, Wheel(map(i, 0, trellis.pixels.numPixels(), 0, 255)));
+          trellis.pixels.show();
+          delay(50);
+        }
+        for (uint16_t i=0; i<trellis.pixels.numPixels(); i++) {
+          trellis.pixels.setPixelColor(i, 0x000000);
+          trellis.pixels.show();
+          delay(50);
+        }
+          pinMode(VRx, INPUT);
+        pinMode(VRy, INPUT);
+        pinMode(SW, INPUT_PULLUP);
+
+            // iterate over the notes of the melody:
+        for (int thisNote = 0; thisNote < 8; thisNote++) {
+
+          // to calculate the note duration, take one second divided by the note type.
+          //e.g. quarter note = 1000 / 4, eighth note = 1000/8, etc.
+          int noteDuration = 1000 / noteDurations[thisNote];
+          tone(8, melody[thisNote], noteDuration);
+
+          // to distinguish the notes, set a minimum time between them.
+          // the note's duration + 30% seems to work well:
+          int pauseBetweenNotes = noteDuration * 1.30;
+          //delay(pauseBetweenNotes);
+          // stop the tone playing:
+          //delay(1000);
+
+        }
+
+      }
+
+      void loop() {
+        trellis.read();  // interrupt management does all the work! :)
+
+        delay(20); //the trellis has a resolution of around 60hz
+
+          xPosition = analogRead(VRx);
+        yPosition = analogRead(VRy);
+        SW_state = digitalRead(SW);
+       // mapX = map(xPosition, 8, 1023, -512, 512);
+        //mapY = map(yPosition, 16, 1023, -512, 512);
+
+        mapX = map(xPosition, 0, 1023, 0, 127);
+        mapY = map(yPosition, 0, 1023, 0, 64);
+        //SCREEN_WIDTH 128 // OLED display width, in pixels
+        //SCREEN_HEIGHT  64
+
+        display.clearDisplay();
+           display.drawCircle(mapX-20, mapY, 2, SSD1306_WHITE);
+
+          display.display();
+
+
+      }
+
+
+
+      /******************************************/
+
+      // Input a value 0 to 255 to get a color value.
+      // The colors are a transition r - g - b - back to r.
+      uint32_t Wheel(byte WheelPos) {
+        if(WheelPos < 85) {
+         return trellis.pixels.Color(WheelPos * 3, 255 - WheelPos * 3, 0);
+        } else if(WheelPos < 170) {
+         WheelPos -= 85;
+         return trellis.pixels.Color(255 - WheelPos * 3, 0, WheelPos * 3);
+        } else {
+         WheelPos -= 170;
+         return trellis.pixels.Color(0, WheelPos * 3, 255 - WheelPos * 3);
+        }
+        return 0;
+      }
+    </pre>
+  </body>
+</html>
